@@ -51,6 +51,31 @@ class TestShellAdapterFiltering:
         assert "ok" in result
         assert len(sandbox.execs) == 1
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            pytest.param("cat .en*", id="star"),
+            pytest.param("cat .en?", id="question-mark"),
+            pytest.param("cat .en[v]", id="character-class"),
+            pytest.param("cat '.en*'", id="single-quoted"),
+            pytest.param('cat ".en*"', id="double-quoted"),
+            pytest.param("cat secrets/*", id="directory"),
+        ],
+    )
+    async def test_ignore_rejects_wildcards_before_execution(self, command: str) -> None:
+        sandbox = RecordingSandbox()
+        adapter = ShellAdapter(sandbox, ignore=[".env"])
+        result = await adapter.run(command)
+        assert "Command not allowed" in result
+        assert "wildcard" in result
+        assert sandbox.execs == []
+
+    async def test_ignore_allows_literal_paths_on_local_backend(self, tmp_path: Path) -> None:
+        (tmp_path / ".env").write_text("SECRET")
+        (tmp_path / "public.txt").write_text("PUBLIC")
+        adapter = ShellAdapter(LocalSandbox(tmp_path), ignore=[".env"])
+        assert await adapter.run("cat public.txt") == "PUBLIC"
+
     async def test_readonly_blocks_writes_by_default(self, tmp_path: Path) -> None:
         sandbox = LocalSandbox(tmp_path)
         adapter = ShellAdapter(sandbox, readonly=True)
